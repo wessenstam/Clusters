@@ -1,83 +1,94 @@
 #!/bin/bash
-# ipsec.conf file creation
 
-# Get the needed parameters need to transform into variables in Calm
-public_cgw="192.146.154.246"
-aws_vgw1="18.157.130.129"
-aws_vgw2="52.58.92.66"
-onprem_netw="10.38.2.64/26"
-aws_vpc_netw="10.0.0.0/16"
-vpn_tun1_netwl="169.254.98.196/30"
-vpn_tun1_netwr="169.254.98.195/30"
-vpn_tun2_netwl="169.254.163.228/30"
-vpn_tun2_netwr="169.254.163.227/30"
-psk_tun1_aws="tdEGkjWKz8y39z.hd77uJg7_N9hLtafo"
-psk_tun2_aws="Qky5qbYx6vPmlSX0wQw9ITniaatjMZUN"
+while [[ $# > 1 ]]; do
+	case ${1} in
+		-ln|--link-name)
+			TUNNEL_NAME="${2}"
+			TUNNEL_PHY_INTERFACE="${PLUTO_INTERFACE}"
+			shift
+			;;
+		-ll|--link-local)
+			TUNNEL_LOCAL_ADDRESS="${2}"
+			TUNNEL_LOCAL_ENDPOINT="${PLUTO_ME}"
+			shift
+			;;
+		-lr|--link-remote)
+			TUNNEL_REMOTE_ADDRESS="${2}"
+			TUNNEL_REMOTE_ENDPOINT="${PLUTO_PEER}"
+			shift
+			;;
+		-m|--mark)
+			TUNNEL_MARK="${2}"
+			shift
+			;;
+		-r|--static-route)
+			TUNNEL_STATIC_ROUTE="${2}"
+			shift
+			;;
+		*)
+			echo "${0}: Unknown argument \"${1}\"" >&2
+			;;
+	esac
+	shift
+done
 
-# Install the strongswan package
-yum update -y
-yum install epel-release
-yum update -y
-yum install -y strongswan wget
+command_exists() {
+	type "$1" >&2 2>&2
+}
 
-# build the ipsec.conf
-cat <<EOF > /etc/strongswan/ipsec.conf
-config setup
-	strictcrlpolicy=no
-	uniqueids = no
+create_interface() {
+	ip link add ${TUNNEL_NAME} type vti local ${TUNNEL_LOCAL_ENDPOINT} remote ${TUNNEL_REMOTE_ENDPOINT} key ${TUNNEL_MARK}
+	ip addr add ${TUNNEL_LOCAL_ADDRESS} remote ${TUNNEL_REMOTE_ADDRESS} dev ${TUNNEL_NAME}
+	ip link set ${TUNNEL_NAME} up mtu 1419
+}
 
-conn Tunnel1
-	auto=start
-	leftid=${public_cgw}
-	right=${aws_vgw1}
-	type=tunnel
-	leftauth=psk
-	rightauth=psk
-	keyexchange=ikev1
-	ike=aes128-sha1-modp1024
-	ikelifetime=8h
-	esp=aes128-sha1-modp1024
-	lifetime=1h
-	keyingtries=%forever
-	leftsubnet=${onprem_netw}
-	rightsubnet=${aws_vpc_netw}
-	dpddelay=10s
-	dpdtimeout=30s
-	dpdaction=restart
-	mark=100
-	leftupdown="/etc/strongswan/aws-updown.sh -ln Tunnel1 -ll ${vpn_tun1_netwl} -lr ${vpn_tun1_netwr} -m 100 -r ${aws_vpc_netw}"
+configure_sysctl() {
+	sysctl -w net.ipv4.ip_forward=1
+	sysctl -w net.ipv4.conf.${TUNNEL_NAME}.rp_filter=2
+	sysctl -w net.ipv4.conf.${TUNNEL_NAME}.disable_policy=1
+	sysctl -w net.ipv4.conf.${TUNNEL_PHY_INTERFACE}.disable_xfrm=1
+	sysctl -w net.ipv4.conf.${TUNNEL_PHY_INTERFACE}.disable_policy=1
+}
 
-conn Tunnel2
-	auto=start
-	leftid=${public_cgw}
-	right=${aws_vgw2}
-	type=tunnel
-	leftauth=psk
-	rightauth=psk
-	keyexchange=ikev1
-	ike=aes128-sha1-modp1024
-	ikelifetime=8h
-	esp=aes128-sha1-modp1024
-	lifetime=1h
-	keyingtries=%forever
-	leftsubnet=${onprem_netw}
-	rightsubnet=${aws_vpc_netw}
-	dpddelay=10s
-	dpdtimeout=30s
-	dpdaction=restart
-	mark=200
-	leftupdown="/etc/strongswan/aws-updown.sh -ln Tunnel2 -ll ${vpn_tun2_netwl} -lr ${vpn_tun2_netwr} -m 200 -r ${aws_vpc_netw}"
-EOF
+add_route() {
+	IFS=',' read -ra route <<< "${TUNNEL_STATIC_ROUTE}"
+    	for i in "${route[@]}"; do
+	    ip route add ${i} dev ${TUNNEL_NAME} metric ${TUNNEL_MARK}
+	done
+	iptables -t mangle -A FORWARD -o ${TUNNEL_NAME} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+	iptables -t mangle -A INPUT -p esp -s ${TUNNEL_REMOTE_ENDPOINT} -d ${TUNNEL_LOCAL_ENDPOINT} -j MARK --set-xmark ${TUNNEL_MARK}
+	ip route flush table 220
+}
 
-# Create the ipsec.secrets files
-echo ${public_cgw} ${aws_vgw1}" : PSK \"${psk_tun1_aws}\"" > /etc/strongswan/ipsec.secrets
-echo ${public_cgw} ${aws_vgw2}" : PSK \"${psk_tun2_aws}\"" >> /etc/strongswan/ipsec.secrets
+cleanup() {
+        IFS=',' read -ra route <<< "${TUNNEL_STATIC_ROUTE}"
+        for i in "${route[@]}"; do
+            ip route del ${i} dev ${TUNNEL_NAME} metric ${TUNNEL_MARK}
+        done
+	iptables -t mangle -D FORWARD -o ${TUNNEL_NAME} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+	iptables -t mangle -D INPUT -p esp -s ${TUNNEL_REMOTE_ENDPOINT} -d ${TUNNEL_LOCAL_ENDPOINT} -j MARK --set-xmark ${TUNNEL_MARK}
+	ip route flush cache
+}
 
-# Get the aws-updown.sh script and make executable
-wget -q https://raw.githubusercontent.com/wessenstam/Clusters/master/files/aws-updown.sh -O /etc/strongswan/aws-updown.sh
-chmod +x /etc/strongswan/aws-updown.sh
-# Make sure strongswan starts at boot time
-chkconfig --level 35 strongswan on
+delete_interface() {
+	ip link set ${TUNNEL_NAME} down
+	ip link del ${TUNNEL_NAME}
+}
 
-# start strongswan
-strongswan start
+# main execution starts here
+
+command_exists ip || echo "ERROR: ip command is required to execute the script, check if you are running as root, mostly to do with path, /sbin/" >&2 2>&2
+command_exists iptables || echo "ERROR: iptables command is required to execute the script, check if you are running as root, mostly to do with path, /sbin/" >&2 2>&2
+command_exists sysctl || echo "ERROR: sysctl command is required to execute the script, check if you are running as root, mostly to do with path, /sbin/" >&2 2>&2
+
+case "${PLUTO_VERB}" in
+	up-client)
+		create_interface
+		configure_sysctl
+		add_route
+		;;
+	down-client)
+		cleanup
+		delete_interface
+		;;
+esac
