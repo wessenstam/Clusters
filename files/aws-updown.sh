@@ -74,7 +74,7 @@ echo ${public_cgw} ${aws_vgw1}" : PSK \"${psk_tun1_aws}\"" > /etc/strongswan/ips
 echo ${public_cgw} ${aws_vgw2}" : PSK \"${psk_tun2_aws}\"" >> /etc/strongswan/ipsec.secrets
 
 # Get the aws-updown.sh script and make executable
-wget -q https://raw.githubusercontent.com/wessenstam/Clusters/master/aws-updown.sh -O /etc/strongswan/aws-updown.sh
+wget -q https://raw.githubusercontent.com/wessenstam/Clusters/master/files/aws-updown.sh -O /etc/strongswan/aws-updown.sh
 chmod +x /etc/strongswan/aws-updown.sh
 # Make sure strongswan starts at boot time
 chkconfig --level 35 strongswan on
