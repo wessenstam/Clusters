@@ -22,7 +22,7 @@ echo "net.ipv4.conf.all.send_redirects = 0" >> /etc/sysctl.conf
 
 echo "Reloading just set system parameters......"
 # reloading the sysctl
-sysctl -p
+sysctl -p -q
 
 
 local_IP=$(sudo ifconfig eth0 | grep netmask | awk '{print $2}')
@@ -31,7 +31,7 @@ echo "This is my external IP address, please use it as customer gateway on AWS s
 echo "Once you created the Site-to-Site configuration in AWS and it is available, Download the Configuration (generic vendor) to your machine."
 echo "After the copy, please copy or create a file called /tmp/vpn_file.txt with the content of the downloaded txt file from AWS."
 echo "IPaddress to ssh to me is the following: " $local_IP
-echo "The script will loop till it sees the file uploaded."
+echo "The script will loop till it sees the file..."
 
 
 until [ -f /tmp/vpn_file.txt ]
