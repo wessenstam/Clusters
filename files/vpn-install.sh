@@ -8,6 +8,20 @@ else
 onprem_netw=$1
 aws_vpc_netw=$2
 
+# Install the strongswan package
+sudo yum install -y -q epel-release wget
+sudo yum update -y -q
+sudo yum install -y -q strongswan
+
+# Installing the needed rules in sysctl
+echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+echo "net.ipv4.conf.all.accept_redirects = 0" >> /etc/sysctl.conf
+echo "net.ipv4.conf.all.send_redirects = 0" >> /etc/sysctl.conf
+
+# reloading the sysctl
+sysctl -p
+
+
 local_IP=$(sudo ifconfig eth0 | grep netmask | awk '{print $2}')
 cgw_ipaddress=$(curl --insecure --silent https://myexternalip.com | grep "<title>" | tr -s " " ":" | cut -d ":" -f 7)
 echo "This is my external IP address, please use it as customer gateway on AWS side" $cgw_ipaddress
@@ -16,11 +30,6 @@ echo "After the copy, please copy or create a file called /tmp/vpn_file.txt with
 echo "IPaddress to ssh to me is the following: " $local_IP
 echo "The script will loop till it sees the file uploaded."
 
-
-# Install the strongswan package
-sudo yum install -y -q epel-release wget
-sudo yum update -y -q
-sudo yum install -y -q strongswan
 
 until [ -f /tmp/vpn_file.txt ]
 do
@@ -50,15 +59,15 @@ echo "HPOC Gateway: "$cgw_ippaddress
 echo "HPOC Network CIDR: "$onprem_netw
 echo "VPC AWS network CIDR: "$aws_vpc_netw
 echo "Tunnel 1 information:"
-echo "		AWS Gateway: "$aws_vgw1
-echo "		Tunnel local: "$vpn_tun1_netwl
-echo "		Tunnel AWS: "$vpn_tun1_netwr
-echo "		Tunnel PSK: "$psk_tun1_aws
-echo "Tunnel 1 information:"
-echo "          AWS Gateway: "$aws_vgw2
-echo "          Tunnel local: "$vpn_tun2_netwl
-echo "          Tunnel AWS: "$vpn_tun2_netwr
-echo "          Tunnel PSK: "$psk_tun2_aws
+echo "  AWS Gateway: "$aws_vgw1
+echo "  Tunnel local: "$vpn_tun1_netwl
+echo "  Tunnel AWS: "$vpn_tun1_netwr
+echo "  Tunnel PSK: "$psk_tun1_aws
+echo "Tunnel 2 information:"
+echo "  AWS Gateway: "$aws_vgw2
+echo "  Tunnel local: "$vpn_tun2_netwl
+echo "  Tunnel AWS: "$vpn_tun2_netwr
+echo "  Tunnel PSK: "$psk_tun2_aws
 echo
 
 read -r -p "Are these correct? [y/N] " response
