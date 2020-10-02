@@ -3,21 +3,24 @@
 
 if [ "$#" -ne 2 ]; then
     echo "Illegal number of parameters"
-    echo "Usage: vpn-install.sh <ONPREM NETWORK> <AWS_VPC CIDR>. Example: vpn-install.sh \"10.42.7.0/25\" \"10.0.0.0/16\""
+    echo "Usage: vpn-install.sh <ONPREM NETWORK> <AWS_VPC CIDR>. Example: vpn-install.sh 10.42.7.0/25 10.0.0.0/16"
 else
 onprem_netw=$1
 aws_vpc_netw=$2
 
+echo "Installing the needed packages. Please be patient...."
 # Install the strongswan package
 sudo yum install -y -q epel-release wget
 sudo yum update -y -q
 sudo yum install -y -q strongswan
 
+echo "Setting system network forwarding parameters..."
 # Installing the needed rules in sysctl
 echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
 echo "net.ipv4.conf.all.accept_redirects = 0" >> /etc/sysctl.conf
 echo "net.ipv4.conf.all.send_redirects = 0" >> /etc/sysctl.conf
 
+echo "Reloading just set system parameters......"
 # reloading the sysctl
 sysctl -p
 
