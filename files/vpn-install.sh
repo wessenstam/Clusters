@@ -13,6 +13,8 @@ echo "Installing the needed packages. Please be patient...."
 sudo yum install -y -q epel-release wget
 sudo yum update -y -q
 sudo yum install -y -q strongswan
+echo "alias ipsec=strongswan >> /etc/profile.d/00-aliases.sh"
+chmod +x /etc/profile.d/00-aliases.sh
 
 echo "Setting system network forwarding parameters..."
 # Installing the needed rules in sysctl
@@ -24,6 +26,16 @@ echo "Reloading just set system parameters......"
 # reloading the sysctl
 sysctl -p -q
 
+echo "Detecting O/S..."
+os_name=$(cat /etc/os-release | grep PRETTY_NAME | cut -d "=" -f2 | tr -d \")
+if [[ "${os_name}" =~ "CentOS" ]] 
+then
+    echo "Detected CentOS. Running specific CentOS steps..."
+    echo "Disabling the Firewall Daemon and flushing the iptables..."
+    systemctl disable firewalld
+    systemctl stop firewalld
+    iptables -F
+fi
 
 local_IP=$(sudo ifconfig eth0 | grep netmask | awk '{print $2}')
 cgw_ipaddress=$(curl --insecure --silent https://myexternalip.com | grep "<title>" | tr -s " " ":" | cut -d ":" -f 7)
@@ -84,6 +96,7 @@ config setup
 conn Tunnel1
     auto=start
     leftid=${public_cgw}
+    leftsourceip=${local_IP}
     right=${aws_vgw1}
     type=tunnel
     leftauth=psk
@@ -105,6 +118,7 @@ conn Tunnel1
 conn Tunnel2
     auto=start
     leftid=${public_cgw}
+    leftsourceip=${local_IP}
     right=${aws_vgw2}
     type=tunnel
     leftauth=psk
@@ -126,7 +140,6 @@ conn Tunnel2
 # Create the ipsec.secrets files
 echo "${public_cgw} ${aws_vgw1} : PSK \"${psk_tun1_aws}\"
 ${public_cgw} ${aws_vgw2} : PSK \"${psk_tun2_aws}\"" | sudo tee /etc/strongswan/ipsec.secrets
-
 
 # Get the aws-updown.sh script and make executable
 sudo wget -q https://raw.githubusercontent.com/wessenstam/Clusters/master/files/aws-updown.sh -O /etc/strongswan/aws-updown.sh
