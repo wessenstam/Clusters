@@ -70,7 +70,7 @@ rm ~/info.txt
 
 # Ask if correct
 echo "The inforamtion that will be used is mentioned below:"
-echo "HPOC Gateway: "$cgw_ippaddress
+echo "HPOC Gateway: "$cgw_ipaddress
 echo "HPOC Network CIDR: "$onprem_netw
 echo "VPC AWS network CIDR: "$aws_vpc_netw
 echo "Tunnel 1 information:"
@@ -85,7 +85,7 @@ echo "  Tunnel AWS: "$vpn_tun2_netwr
 echo "  Tunnel PSK: "$psk_tun2_aws
 echo
 
-read -r -p "Are these correct? [y/N] " response
+read -r -p "Are these correct? [Y/N] " response
 if [[ "$response" =~ ^([yY])$ ]]; then
 
 echo "
@@ -153,6 +153,7 @@ sudo strongswan restart
 
 
 else
+        echo "Not recieved Y, so exiting the script without setting the configuration...."
         exit 0
 fi
 fi
