@@ -34,6 +34,7 @@ then
     echo "Disabling the Firewall Daemon and flushing the iptables..."
     systemctl disable firewalld
     systemctl stop firewalld
+    systemctl disable firewalld
     iptables -F
 fi
 
